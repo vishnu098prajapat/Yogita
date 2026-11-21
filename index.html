@@ -647,7 +647,7 @@
 
 <script>
   /* ═══════════ STATE ═══════════ */
-  var blown=false,counting=false,cutDone=false,started=false,musicOn=false;
+  var blown=false,counting=false,cutDone=false,started=false,musicOn=true;
   var starSvg='<svg class="cnt-star" viewBox="0 0 100 100"><defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff3b0"/><stop offset="40%" stop-color="#ffd166"/><stop offset="100%" stop-color="#ff9e00"/></linearGradient></defs><polygon points="50,5 64,36 98,36 70,57 81,91 50,70 19,91 30,57 2,36 36,36" fill="url(#sg)"/></svg>';
 
   /* ═══════════ TYPING ═══════════ */
@@ -1016,7 +1016,7 @@
     if (musicOn) {
       if (btn) btn.classList.remove('muted');
       if (icon) icon.textContent = '🎵';
-      if (txt) txt.textContent = (aC && aC.state === 'suspended') ? 'Tap for Sound 🎵' : 'Music On';
+      if (txt) txt.textContent = 'Music On';
     } else {
       if (btn) btn.classList.add('muted');
       if (icon) icon.textContent = '🔇';
@@ -1054,25 +1054,45 @@
     }
   }
 
-  // Global listeners to unlock audio on the very first gesture (handles refresh restriction seamlessly)
-  var unlockEvents = ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click', 'scroll'];
-  function onFirstUserGesture() {
+  function ensureAudioPlaying() {
+    if (!musicOn) return;
     var c = getAC();
-    if (c && c.state === 'suspended') {
+    if (!c) return;
+    if (c.state === 'suspended') {
       c.resume().then(function() {
-        updateMusicUI();
-        if (musicOn && !isMelodyPlaying) {
+        if (musicOn && c.state === 'running' && !isMelodyPlaying) {
           playMelody();
         }
       }).catch(function(){});
-    } else if (musicOn && !isMelodyPlaying) {
-      playMelody();
+    } else if (c.state === 'running') {
+      if (musicOn && !isMelodyPlaying) {
+        playMelody();
+      }
     }
-    updateMusicUI();
   }
-  unlockEvents.forEach(function(ev) {
-    window.addEventListener(ev, onFirstUserGesture, { passive: true });
+
+  // Silent ambient triggers: any cursor movement, scroll, touch or hover triggers sound seamlessly without asking user to tap
+  var ambientEvents = ['pointerdown', 'touchstart', 'mousedown', 'mousemove', 'pointermove', 'touchmove', 'keydown', 'click', 'scroll', 'wheel', 'focus', 'mouseenter', 'visibilitychange'];
+  ambientEvents.forEach(function(ev) {
+    window.addEventListener(ev, function() {
+      ensureAudioPlaying();
+    }, { passive: true });
   });
+
+  // Aggressive auto-resume poller (catches link clicks & WebView activations)
+  var autoPlayAttempts = 0;
+  var autoPlayIv = setInterval(function() {
+    autoPlayAttempts++;
+    if (isMelodyPlaying || autoPlayAttempts > 30) {
+      clearInterval(autoPlayIv);
+      return;
+    }
+    ensureAudioPlaying();
+  }, 150);
+
+  // Trigger immediately
+  tryMusic();
+  document.addEventListener('DOMContentLoaded', tryMusic);
 
   /* ═══════════ BALLOONS ═══════════ */
   var sky=document.getElementById('balloon-sky');
